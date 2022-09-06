@@ -13,9 +13,11 @@ import scipy.sparse as sp
 from scipy.sparse import coo_matrix
 from config import args
 from link_prediction import link_prediction
-from evolution import calc_raw_mrr, calc_filtered_mrr, calc_filtered_test_mrr
+from evolution import calc_raw_mrr, calc_filtered_mrr, calc_time_filtered_mrr # modified eval_paper_authors: rename  calc_time_filtered_mrr
 import codecs
 import json
+import logging # modified eval_paper_authors
+from tabulate import tabulate # modified eval_paper_authors
 from tensorboardX import SummaryWriter
 import matplotlib.pyplot as plt
 
@@ -32,15 +34,15 @@ def mkdirs(path):
 
 use_cuda = args.gpu >= 0 and torch.cuda.is_available()
 device = torch.device("cuda" if use_cuda else "cpu")
-
-if args.dataset == 'ICEWS14':
-	train_data, train_times = load_quadruples('./data/{}'.format(args.dataset), 'train.txt')
-	test_data, test_times = load_quadruples('./data/{}'.format(args.dataset), 'test.txt')
-	dev_data, dev_times = load_quadruples('./data/{}'.format(args.dataset), 'test.txt')
-else:
-	train_data, train_times = load_quadruples('./data/{}'.format(args.dataset), 'train.txt')
-	test_data, test_times = load_quadruples('./data/{}'.format(args.dataset), 'test.txt')
-	dev_data, dev_times = load_quadruples('./data/{}'.format(args.dataset), 'valid.txt')
+print("device ", device, args.gpu)
+# if args.dataset == 'ICEWS14': # modified eval_paper_authors: removed because of test set leak
+# 	train_data, train_times = load_quadruples('./data/{}'.format(args.dataset), 'train.txt')
+# 	test_data, test_times = load_quadruples('./data/{}'.format(args.dataset), 'test.txt')
+# 	dev_data, dev_times = load_quadruples('./data/{}'.format(args.dataset), 'test.txt')
+# else:
+train_data, train_times = load_quadruples('./data/{}'.format(args.dataset), 'train.txt')
+test_data, test_times = load_quadruples('./data/{}'.format(args.dataset), 'test.txt')
+dev_data, dev_times = load_quadruples('./data/{}'.format(args.dataset), 'valid.txt')
 
 all_times = np.concatenate([train_times, dev_times, test_times])
 
@@ -61,10 +63,10 @@ optimizer = optim.Adam(model.parameters(), lr=args.lr, amsgrad=True)
 
 if args.entity == 'object':
 	mkdirs('./results/bestmodel/{}'.format(args.dataset))
-	model_state_file = './results/bestmodel/{}/model_state.pth'.format(args.dataset)
+	model_state_file = './results/bestmodel/{}/{}_model_state.pth'.format(args.dataset,args.setting) #modified eval_paper_authors to name model acc. to metric setting
 if args.entity == 'subject':
 	mkdirs('./results/bestmodel/{}_sub'.format(args.dataset))
-	model_state_file = './results/bestmodel/{}_sub/model_state.pth'.format(args.dataset)
+	model_state_file = './results/bestmodel/{}_sub/{}_model_state.pth'.format(args.dataset,args.setting) #modified eval_paper_authors to name model acc. to metric setting
 
 forward_time = []
 backward_time = []
@@ -80,6 +82,7 @@ writer = SummaryWriter(log_dir='scalar/{}/'.format(args.dataset))
 
 print('start train')
 n = 0
+
 
 for i in range(args.n_epochs):
 	train_loss = 0
@@ -140,7 +143,7 @@ for i in range(args.n_epochs):
 
 		sample_read += train_samples[train_samples_tim]
 
-	if i>=args.valid_epoch:
+	if i >= args.valid_epoch:
 		mrr, hits1, hits3, hits10 = 0,0,0,0
 
 		dev_sample_read = 0
@@ -171,10 +174,10 @@ for i in range(args.n_epochs):
 			if use_cuda:
 				dev_label, one_hot_tail_seq = dev_label.to(device), one_hot_tail_seq.to(device)
 			dev_score = model(dev_batch_data, one_hot_tail_seq, entity=args.entity)
-			
-			if args.raw:
+			# modified by eval_paper_authors/ to integrate different filter settings
+			if args.setting == 'raw':
 				tim_mrr, tim_hits1, tim_hits3, tim_hits10 = calc_raw_mrr(dev_score, dev_label, hits=[1, 3, 10])
-			else:
+			elif args.setting == 'static':
 				tim_mrr, tim_hits1, tim_hits3, tim_hits10 = calc_filtered_mrr(num_e, 
 											      dev_score, 
 											      torch.LongTensor(train_data),
@@ -182,7 +185,15 @@ for i in range(args.n_epochs):
 											      torch.LongTensor(dev_batch_data),
 											      entity=args.entity,
 											      hits=[1, 3, 10])
-
+			elif args.setting == 'time':
+				tim_mrr, tim_hits1, tim_hits3, tim_hits10 = calc_time_filtered_mrr(num_e,
+											      dev_score,
+											      torch.LongTensor(train_data),
+										              torch.LongTensor(dev_data),
+											      torch.LongTensor(dev_batch_data),
+											      entity=args.entity,
+											      hits=[1, 3, 10])
+			# end modified eval_paper_authors/
 			mrr += tim_mrr * len(dev_batch_data)
 			hits1 += tim_hits1 * len(dev_batch_data)
 			hits3 += tim_hits3 * len(dev_batch_data)

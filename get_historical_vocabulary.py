@@ -46,6 +46,7 @@ def get_data_with_t(data, tim):
     return np.array(triples)
 
 train_data, train_times = load_quadruples('./data/{}'.format(args.dataset), 'train.txt')
+dev_data, dev_times = load_quadruples('./data/{}'.format(args.dataset), 'valid.txt') #added eval_paper_authors
 num_e, num_r = get_total_number('./data/{}'.format(args.dataset), 'stat.txt')
 
 save_dir_obj = './data/{}/copy_seq/'.format(args.dataset)
@@ -72,3 +73,24 @@ for tim in tqdm(train_times):
     d1 = np.ones(len(row1))
     tail_seq_sub = sp.csr_matrix((d1, (row1, col1)), shape=(num_e * num_r, num_e))
     sp.save_npz('./data/{}/copy_seq_sub/train_h_r_copy_seq_{}.npz'.format(args.dataset, tim), tail_seq_sub)
+
+
+
+# added eval_paper_authors: (to also use the validation data for testing, if wanted)
+# in test.py: args.feedvalid -> if true: use also the seq from valid set for testing
+for tim in tqdm(dev_times):
+    dev_new_data = np.array([[quad[0], quad[1], quad[2], quad[3]] for quad in dev_data if quad[3] == tim])
+    # get object entities
+    row = dev_new_data[:, 0] * num_r + dev_new_data[:, 1] # dev data -> validation set
+    col = dev_new_data[:, 2]
+    d = np.ones(len(row))
+    tail_seq = sp.csr_matrix((d, (row, col)), shape=(num_e * num_r, num_e))
+    sp.save_npz('./data/{}/copy_seq/train_h_r_copy_seq_{}.npz'.format(args.dataset, tim), tail_seq)
+    # get subject_entities
+    row1 = dev_new_data[:, 2] * num_r + dev_new_data[:, 1] # dev data -> validation set
+    col1 = dev_new_data[:, 0]
+    d1 = np.ones(len(row1))
+    tail_seq_sub = sp.csr_matrix((d1, (row1, col1)), shape=(num_e * num_r, num_e))
+    sp.save_npz('./data/{}/copy_seq_sub/train_h_r_copy_seq_{}.npz'.format(args.dataset, tim), tail_seq_sub)
+# end added eval_paper authors
+

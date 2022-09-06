@@ -142,3 +142,103 @@ def calc_filtered_test_mrr(num_entity, score, train_triplets, valid_triplets, va
         hits10 = torch.mean((ranks <= hits[2]).float())
 
     return mrr.item(), hits1.item(), hits3.item(), hits10.item()
+
+
+#######################################################################
+#
+# Modifications for time aware filtering eval_paper_authors
+#
+# some lines commented
+# additionally also renamed a few variable to have a better understanding;
+# original variables can be a it confusing and did not modify anything on those functions.
+
+#######################################################################
+
+def get_time_filtered_rank(num_entity, score, h, r, t, test_size, test_triplets, entity):
+    # Some major modifications here
+
+    num_entities = num_entity
+    ranks = []
+    for idx in range(test_size):
+        target_h = h[idx]
+        target_r = r[idx]
+        target_t = t[idx]
+
+        # subset based on query timestamp
+        current_timestamp = test_triplets[idx, 3]
+        triplets_to_filter = test_triplets[test_triplets[:, 3] == current_timestamp]
+
+        # somewhat using old logics here to get results with least manipulations.
+        # this logic is computationally expensive according to eval_paper_authors and should be changed (if required)
+        triplets_to_filter = torch.Tensor([[quad[0], quad[1], quad[2]] for quad in triplets_to_filter])  # test set
+        triplets_to_filter = torch.cat([triplets_to_filter]).tolist()
+        triplets_to_filter = {tuple(triplet) for triplet in triplets_to_filter}
+
+        if entity == 'object':
+            filtered_t = filter_t(triplets_to_filter, target_h, target_r, target_t, num_entities)
+            target_t_idx = int((filtered_t == target_t).nonzero())
+            _, indices = torch.sort(score[idx][filtered_t], descending=True)  # filtered_t are entities
+            rank = int((indices == target_t_idx).nonzero())
+        if entity == 'subject':
+            filtered_h = filter_h(triplets_to_filter, target_h, target_r, target_t, num_entities)
+            target_h_idx = int((filtered_h == target_h).nonzero())
+            _, indices = torch.sort(score[idx][filtered_h], descending=True)
+            rank = int((indices == target_h_idx).nonzero())
+
+        ranks.append(rank)
+    return torch.LongTensor(ranks)
+
+
+def calc_time_filtered_test_mrr(num_entity, score, train_triplets, valid_triplets, test_triplets, test_batch_triplets, entity, hits=[]):
+    with torch.no_grad():
+        h = test_batch_triplets[:, 0]
+        r = test_batch_triplets[:, 1]
+        t = test_batch_triplets[:, 2]
+        test_size = test_batch_triplets.shape[0]
+
+        # train_triplets = torch.Tensor([[quad[0], quad[1], quad[2]] for quad in train_triplets])  # train set
+        # valid_triplets = torch.Tensor([[quad[0], quad[1], quad[2]] for quad in valid_triplets])  # valid set
+        # test_triplets = torch.Tensor([[quad[0], quad[1], quad[2]] for quad in test_triplets]) # test set
+        # test_batch_triplets = torch.Tensor([[quad[0], quad[1], quad[2]] for quad in test_batch_triplets])  # test batch set
+        #
+        # Why would they want to add the batch triples again which already exist in test_triplets.
+        # triplets_to_filter = torch.cat([train_triplets, valid_triplets, test_triplets, test_batch_triplets]).tolist()
+
+        ranks = get_time_filtered_rank(num_entity, score, h, r, t, test_size, test_triplets, entity)
+
+        ranks += 1 # change to 1-indexed
+
+        mrr = torch.mean(1.0 / ranks.float())
+
+        hits1 = torch.mean((ranks <= hits[0]).float())
+        hits3 = torch.mean((ranks <= hits[1]).float())
+        hits10 = torch.mean((ranks <= hits[2]).float())
+
+    return mrr.item(), hits1.item(), hits3.item(), hits10.item()
+
+
+def calc_time_filtered_mrr(num_entity, score, train_triplets, valid_triplets, valid_batch_triplets, entity, hits=[]):
+    with torch.no_grad():
+        h = valid_batch_triplets[:, 0]
+        r = valid_batch_triplets[:, 1]
+        t = valid_batch_triplets[:, 2]
+        test_size = valid_batch_triplets.shape[0]
+
+
+        # train_triplets = torch.Tensor([[quad[0], quad[1], quad[2]] for quad in train_triplets])  #train set
+        # valid_triplets = torch.Tensor([[quad[0], quad[1], quad[2]] for quad in valid_triplets])  # valid set
+        # valid_batch_triplets = torch.Tensor([[quad[0], quad[1], quad[2]] for quad in valid_batch_triplets])  # valid batch set
+        # triplets_to_filter = torch.cat([train_triplets, valid_triplets, valid_batch_triplets]).tolist()
+        # triplets_to_filter = {tuple(triplet) for triplet in triplets_to_filter}
+
+        ranks = get_time_filtered_rank(num_entity, score, h, r, t, test_size, valid_triplets, entity)
+
+        ranks += 1  # change to 1-indexed
+
+        mrr = torch.mean(1.0 / ranks.float())
+
+        hits1 = torch.mean((ranks <= hits[0]).float())
+        hits3 = torch.mean((ranks <= hits[1]).float())
+        hits10 = torch.mean((ranks <= hits[2]).float())
+
+    return mrr.item(), hits1.item(), hits3.item(), hits10.item()
