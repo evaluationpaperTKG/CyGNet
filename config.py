@@ -22,6 +22,7 @@ args.add_argument('--setting', type=str, default='static', choices=['raw', 'stat
                     help="filtering setting")
 args.add_argument("--runnr", default=0, type=int) 
 args.add_argument("--multi_step", default=True, type=bool, help="do multi-steps inference without ground truth")
+args.add_argument("--feedvalid", default=True, type=bool, help="do we feed the validation set for testing?")
 ### end added eval_paper_authors
 
 args = args.parse_args()
