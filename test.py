@@ -16,6 +16,13 @@ device = torch.device("cuda" if use_cuda else "cpu")
 # added by eval_paper_authors/ to integrate logging
 n = 'CyGNet'
 log_dir = f'../logs_22/{n}.log'
+CHECK_FOLDER = os.path.isdir(log_dir)
+if not CHECK_FOLDER:
+    os.makedirs(log_dir)
+    print("created folder : ", log_dir)
+else:
+    print(log_dir, "folder already exists.")
+
 logging.basicConfig(filename=log_dir, filemode='a',
                     format='%(asctime)s - %(message)s',
                     datefmt='%d-%b-%y %H:%M:%S',
